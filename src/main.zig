@@ -3,11 +3,11 @@ const xml = @import("xml.zig");
 const Registry = @import("Registry.zig");
 const Api = @import("Api.zig");
 
-pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const allocator = arena.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.arena.allocator();
+    const io = init.io;
 
-    var args = try std.process.argsWithAllocator(allocator);
+    var args = try init.minimal.args.iterateAllocator(allocator);
     _ = args.skip();
     const xml_path = args.next() orelse return error.MissingArgument;
     const out_path = args.next() orelse return error.MissingArgument;
@@ -18,20 +18,20 @@ pub fn main() !void {
 
     var extensions: std.ArrayList([]const u8) = .empty;
     if (extensions_path) |path| {
-        const data = try readFile(allocator, path);
+        const data = try readFile(allocator, io, path);
         var iter = std.mem.tokenizeAny(u8, data, &std.ascii.whitespace);
         while (iter.next()) |name| {
             try extensions.append(allocator, name);
         }
     }
 
-    const registry_bytes = try readFile(allocator, xml_path);
+    const registry_bytes = try readFile(allocator, io, xml_path);
     const registry = try Registry.init(allocator, registry_bytes);
 
-    const output = try std.fs.cwd().createFile(out_path, .{});
-    defer output.close();
+    const output = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+    defer output.close(io);
     var buffer: [4096]u8 = undefined;
-    var writer = output.writer(&buffer);
+    var writer = output.writer(io, &buffer);
 
     try generate(
         allocator,
@@ -303,13 +303,11 @@ const rewrite_types = std.StaticStringMap([]const u8).initComptime(.{
     .{ "GLhalfNV", "u16" },
 });
 
-fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
-    const buffer = try allocator.alloc(u8, @intCast(try file.getEndPos()));
-    var reader = file.reader(buffer);
-    try reader.interface.fill(buffer.len);
-    return buffer;
+fn readFile(allocator: std.mem.Allocator, io: std.Io, path: []const u8) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+    var reader = file.reader(io, &.{});
+    return reader.interface.readAlloc(allocator, try reader.getSize());
 }
 
 fn stringLessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
