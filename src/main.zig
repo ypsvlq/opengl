@@ -21,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
     const extension_names = try readFile(allocator, io, extensions_path);
     var extension_name_iter = std.mem.tokenizeAny(u8, extension_names, &std.ascii.whitespace);
     while (extension_name_iter.next()) |name| {
-        try extensions.append(allocator, name);
+        try extensions.append(allocator, try std.fmt.allocPrint(allocator, "GL_{s}", .{name}));
     }
 
     const registry_bytes = try readFile(allocator, io, registry_path);
