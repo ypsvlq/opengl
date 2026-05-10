@@ -142,7 +142,7 @@ fn generate(
             try writer.writeAll(
                 \\    const extension_string = std.mem.sliceTo(getString(EXTENSIONS), 0);
                 \\    for (extension_flags, extension_names) |*flag, name| {
-                \\        if (std.mem.indexOf(u8, extension_string, name)) |index| {
+                \\        if (std.mem.find(u8, extension_string, name)) |index| {
                 \\            if (index == 0 or index + name.len == extension_string.len or (extension_string[index - 1] == ' ' and extension_string[index + name.len] == ' ')) {
                 \\                flag.* = true;
                 \\            }
@@ -183,10 +183,10 @@ fn generate(
     try writer.print("pub {s}var functions: Functions = .{{}};\n", .{if (thread_local) "threadlocal " else ""});
 
     for (commands) |command| {
-        const colon = std.mem.indexOfScalar(u8, command, ':').?;
-        const param_start = std.mem.indexOfScalar(u8, command, '(').?;
-        const param_end = std.mem.indexOfScalar(u8, command, ')').?;
-        const callconv_end = std.mem.lastIndexOfScalar(u8, command, ')').?;
+        const colon = std.mem.findScalar(u8, command, ':').?;
+        const param_start = std.mem.findScalar(u8, command, '(').?;
+        const param_end = std.mem.findScalar(u8, command, ')').?;
+        const callconv_end = std.mem.findScalarLast(u8, command, ')').?;
 
         try writer.print("pub fn {s}{s}{s} {{\n    return functions.{s}.?(", .{ command[0..colon], command[param_start .. param_end + 1], command[callconv_end + 1 ..], command[0..colon] });
 

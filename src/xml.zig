@@ -228,11 +228,11 @@ const Parser = struct {
 
     fn currentLine(self: Parser) []const u8 {
         var begin: usize = 0;
-        if (mem.lastIndexOfScalar(u8, self.source[0..self.offset], '\n')) |prev_nl| {
+        if (mem.findScalarLast(u8, self.source[0..self.offset], '\n')) |prev_nl| {
             begin = prev_nl + 1;
         }
 
-        const end = mem.indexOfScalarPos(u8, self.source, self.offset, '\n') orelse self.source.len;
+        const end = mem.findScalarPos(u8, self.source, self.offset, '\n') orelse self.source.len;
         return self.source[begin..end];
     }
 };
@@ -603,7 +603,7 @@ fn unescape(arena: Allocator, text: []const u8) ![]const u8 {
     var i: usize = 0;
     while (i < text.len) : (j += 1) {
         if (text[i] == '&') {
-            const entity_end = 1 + (mem.indexOfScalarPos(u8, text, i, ';') orelse return error.InvalidEntity);
+            const entity_end = 1 + (mem.findScalarPos(u8, text, i, ';') orelse return error.InvalidEntity);
             unescaped[j] = try unescapeEntity(text[i..entity_end]);
             i = entity_end;
         } else {
