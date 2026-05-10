@@ -10,6 +10,7 @@
         .minor_version = 6,
         .profile = .core,
         .extensions = "",
+        .thread_local = false,
     });
 
     mod.addImport("gl", opengl.module("opengl"));

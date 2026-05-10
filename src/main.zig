@@ -9,26 +9,25 @@ pub fn main(init: std.process.Init) !void {
 
     var args = try init.minimal.args.iterateAllocator(allocator);
     _ = args.skip();
-    const xml_path = args.next() orelse return error.MissingArgument;
-    const out_path = args.next() orelse return error.MissingArgument;
+    const registry_path = args.next() orelse return error.MissingArgument;
+    const output_path = args.next() orelse return error.MissingArgument;
     const api = args.next() orelse return error.MissingArgument;
     const version = args.next() orelse return error.MissingArgument;
     const profile = args.next() orelse return error.MissingArgument;
-    const extensions_path = args.next();
+    const extensions_path = args.next() orelse return error.MissingArgument;
+    const thread_local = args.next() orelse return error.MissingArgument;
 
     var extensions: std.ArrayList([]const u8) = .empty;
-    if (extensions_path) |path| {
-        const data = try readFile(allocator, io, path);
-        var iter = std.mem.tokenizeAny(u8, data, &std.ascii.whitespace);
-        while (iter.next()) |name| {
-            try extensions.append(allocator, name);
-        }
+    const extension_names = try readFile(allocator, io, extensions_path);
+    var extension_name_iter = std.mem.tokenizeAny(u8, extension_names, &std.ascii.whitespace);
+    while (extension_name_iter.next()) |name| {
+        try extensions.append(allocator, name);
     }
 
-    const registry_bytes = try readFile(allocator, io, xml_path);
+    const registry_bytes = try readFile(allocator, io, registry_path);
     const registry = try Registry.init(allocator, registry_bytes);
 
-    const output = try std.Io.Dir.cwd().createFile(io, out_path, .{});
+    const output = try std.Io.Dir.cwd().createFile(io, output_path, .{});
     defer output.close(io);
     var buffer: [4096]u8 = undefined;
     var writer = output.writer(io, &buffer);
@@ -39,12 +38,20 @@ pub fn main(init: std.process.Init) !void {
         registry,
         .{ .api = api, .version = version, .profile = profile },
         extensions.items,
+        std.mem.eql(u8, thread_local, "true"),
     );
 
     try writer.interface.flush();
 }
 
-fn generate(allocator: std.mem.Allocator, writer: *std.Io.Writer, registry: Registry, target: Api.Target, extensions: [][]const u8) !void {
+fn generate(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    registry: Registry,
+    target: Api.Target,
+    extensions: [][]const u8,
+    thread_local: bool,
+) !void {
     const api = try Api.init(allocator, registry, target, extensions);
     const enums = api.enums.keys();
 
@@ -93,7 +100,7 @@ fn generate(allocator: std.mem.Allocator, writer: *std.Io.Writer, registry: Regi
         \\pub fn load(getProcAddress: anytype) !void {
         \\    @setEvalBranchQuota(100000);
         \\    const function_names = comptime blk: {
-        \\        const fields = @typeInfo(@TypeOf(functions)).@"struct".fields;
+        \\        const fields = @typeInfo(Functions).@"struct".fields;
         \\        var names: [fields.len][*:0]const u8 = undefined;
         \\        for (&names, fields) |*name, field| name.* = "gl" ++ &[_]u8{std.ascii.toUpper(field.name[0])} ++ field.name[1..];
         \\        break :blk names;
@@ -107,7 +114,7 @@ fn generate(allocator: std.mem.Allocator, writer: *std.Io.Writer, registry: Regi
     if (extensions.len > 0) {
         try writer.writeAll(
             \\    const extension_names = comptime blk: {
-            \\        const fields = @typeInfo(@TypeOf(extensions)).@"struct".fields;
+            \\        const fields = @typeInfo(Extensions).@"struct".fields;
             \\        var names: [fields.len][]const u8 = undefined;
             \\        for (&names, fields) |*name, field| name.* = "GL_" ++ field.name;
             \\        break :blk names;
@@ -160,21 +167,20 @@ fn generate(allocator: std.mem.Allocator, writer: *std.Io.Writer, registry: Regi
     }
 
     if (extensions.len > 0) {
-        try writer.writeAll("pub var extensions: extern struct {\n");
+        try writer.writeAll("pub const Extensions = extern struct {\n");
         for (extensions) |name| {
             try writer.print("    {f}: bool = false,\n", .{std.zig.fmtId(name[3..])});
         }
-        try writer.writeAll("} = .{};\n");
+        try writer.writeAll("};\n");
+        try writer.print("pub {s}var extensions: Extensions = .{{}};\n", .{if (thread_local) "threadlocal " else ""});
     }
 
-    try writer.writeAll("pub var functions: extern struct {\n");
+    try writer.writeAll("pub const Functions = extern struct {\n");
     for (commands) |command| {
         try writer.print("    {s} = null,\n", .{command});
     }
-    try writer.writeAll(
-        \\} = .{};
-        \\
-    );
+    try writer.writeAll("};\n");
+    try writer.print("pub {s}var functions: Functions = .{{}};\n", .{if (thread_local) "threadlocal " else ""});
 
     for (commands) |command| {
         const colon = std.mem.indexOfScalar(u8, command, ':').?;
