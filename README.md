@@ -2,24 +2,31 @@
 
 ## Usage
 
-`build.zig`
+In your build script:
 
-    const opengl = b.dependency("opengl", .{
-        .api = .gl,
-        .major_version = 4,
-        .minor_version = 6,
-        .profile = .core,
-        .extensions = "",
-        .thread_local = false,
-    });
+```zig
+const opengl = b.dependency("opengl", .{
+    .registry = null, // use vendored gl.xml
+    .api = .gl,
+    .major_version = 3,
+    .minor_version = 2,
+    .profile = .core,
+    .extensions = "KHR_debug",
+    .thread_local = false,
+});
 
-    mod.addImport("gl", opengl.module("opengl"));
+mod.addImport("gl", opengl.module("opengl"));
+```
 
-`main.zig`
+In your program:
 
-    makeContextCurrent();
-    try gl.load(getProcAddress);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+```zig
+makeContextCurrent();
+try gl.load(getProcAddress);
 
-A default copy of `gl.xml` is provided, as the upstream repository includes
-unnecessary files. To use a different copy, set the `registry` build option.
+gl.clear(gl.COLOR_BUFFER_BIT);
+
+if (gl.extensions.KHR_debug) {
+    gl.debugMessageCallback(debugCallback, null);
+}
+```
