@@ -95,8 +95,6 @@ fn generate(
 
     try writer.writeAll(
         \\const std = @import("std");
-        \\const builtin = @import("builtin");
-        \\pub const APIENTRY: std.builtin.CallingConvention = if (builtin.os.tag == .windows) .winapi else .c;
         \\pub fn load(getProcAddress: anytype) !void {
         \\    @setEvalBranchQuota(100000);
         \\    const function_names = comptime blk: {
@@ -124,35 +122,46 @@ fn generate(
         );
         if (api.commands.contains("glGetStringi")) {
             try writer.writeAll(
-                \\    var num_extensions: i32 = undefined;
-                \\    getIntegerv(NUM_EXTENSIONS, &num_extensions);
-                \\    var i: u32 = 0;
-                \\    while (i < num_extensions) : (i += 1) {
-                \\        const extension = std.mem.sliceTo(getStringi(EXTENSIONS, i), 0);
-                \\        for (extension_flags, extension_names) |*flag, name| {
-                \\            if (std.mem.eql(u8, name, extension)) {
-                \\                flag.* = true;
-                \\                break;
+                \\    const version = std.mem.sliceTo(getString(VERSION), 0);
+                \\    if (std.mem.findScalar(u8, version, '.')) |dot| {
+                \\        const number_start = if (std.mem.findLastNone(u8, version[0..dot], "0123456789")) |index| index + 1 else 0;
+                \\        const major_version = try std.fmt.parseUnsigned(u8, version[number_start..dot], 10);
+                \\        if (major_version >= 3) {
+                \\            var num_extensions: i32 = undefined;
+                \\            getIntegerv(NUM_EXTENSIONS, &num_extensions);
+                \\            var i: u32 = 0;
+                \\            while (i < num_extensions) : (i += 1) {
+                \\                const extension = std.mem.sliceTo(getStringi(EXTENSIONS, i), 0);
+                \\                for (extension_flags, extension_names) |*flag, name| {
+                \\                    if (std.mem.eql(u8, name, extension)) {
+                \\                        flag.* = true;
+                \\                        break;
+                \\                    }
+                \\                }
                 \\            }
-                \\        }
-                \\    }
-                \\
-            );
-        } else {
-            try writer.writeAll(
-                \\    const extension_string = std.mem.sliceTo(getString(EXTENSIONS), 0);
-                \\    for (extension_flags, extension_names) |*flag, name| {
-                \\        if (std.mem.find(u8, extension_string, name)) |index| {
-                \\            if (index == 0 or index + name.len == extension_string.len or (extension_string[index - 1] == ' ' and extension_string[index + name.len] == ' ')) {
-                \\                flag.* = true;
-                \\            }
+                \\            return;
                 \\        }
                 \\    }
                 \\
             );
         }
+        try writer.writeAll(
+            \\    const extension_string = std.mem.sliceTo(getString(EXTENSIONS), 0);
+            \\    for (extension_flags, extension_names) |*flag, name| {
+            \\        if (std.mem.find(u8, extension_string, name)) |index| {
+            \\            if (index == 0 or index + name.len == extension_string.len or (extension_string[index - 1] == ' ' and extension_string[index + name.len] == ' ')) {
+            \\                flag.* = true;
+            \\            }
+            \\        }
+            \\    }
+            \\
+        );
     }
-    try writer.writeAll("}\n");
+    try writer.writeAll(
+        \\}
+        \\pub const APIENTRY: std.builtin.CallingConvention = if (@import("builtin").os.tag == .windows) .winapi else .c;
+        \\
+    );
 
     for (types) |name| {
         if (!rewrite_types.has(name)) {
